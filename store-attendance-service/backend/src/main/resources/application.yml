@@ -1,0 +1,28 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: store-attendance-service
+  r2dbc:
+    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/attendance}
+    username: ${DB_USER:attendance}
+    password: ${DB_PASSWORD:attendance}
+  datasource:
+    url: ${FLYWAY_URL:jdbc:postgresql://localhost:5432/attendance}
+    username: ${DB_USER:attendance}
+    password: ${DB_PASSWORD:attendance}
+  flyway:
+    enabled: true
+    url: ${FLYWAY_URL:jdbc:postgresql://localhost:5432/attendance}
+    user: ${DB_USER:attendance}
+    password: ${DB_PASSWORD:attendance}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+app:
+  cors-origin: ${CORS_ORIGIN:http://localhost:3000}
+  session-ttl-hours: ${SESSION_TTL_HOURS:8}
+  seed: ${APP_SEED:true}
