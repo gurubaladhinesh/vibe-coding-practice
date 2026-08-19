@@ -8,24 +8,13 @@ import {
   type TokenFetchResult,
   type TokenFetchSuccess,
 } from './api'
+import { parseStoredTokens, serializeStoredTokens, type StoredToken } from './tokenStorage'
 
 const STORAGE_KEY = 'unified-github-pats'
 const LEVEL_COLORS = ['#161b22', '#0e4429', '#006d32', '#26a641', '#39ff14'] as const
 
-type StoredToken = {
-  id: string
-  value: string
-}
-
 function loadTokens(): StoredToken[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as StoredToken[]
-    return Array.isArray(parsed) ? parsed.filter((item) => item.id && item.value) : []
-  } catch {
-    return []
-  }
+  return parseStoredTokens(localStorage.getItem(STORAGE_KEY))
 }
 
 function monthLabel(date: string): string {
@@ -35,20 +24,33 @@ function monthLabel(date: string): string {
   })
 }
 
-function formatTooltip(day: MergedDay): string {
-  const label = new Date(`${day.date}T00:00:00Z`).toLocaleDateString('en-US', {
+function formatDayLabel(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     timeZone: 'UTC',
   })
+}
+
+function formatAriaLabel(day: MergedDay): string {
   const count = day.contributionCount
-  return `${count} contribution${count === 1 ? '' : 's'} on ${label}`
+  const total = `${count} contribution${count === 1 ? '' : 's'} on ${formatDayLabel(day.date)}`
+  if (day.byAccount.length === 0) return total
+
+  const parts = day.byAccount
+    .filter((account) => account.contributionCount > 0)
+    .map((account) => `@${account.login}: ${account.contributionCount}`)
+  return parts.length > 0 ? `${total}. ${parts.join(', ')}` : total
+}
+
+function emptyDay(date: string): MergedDay {
+  return { date, contributionCount: 0, level: 0, byAccount: [] }
 }
 
 function Heatmap({ days }: { days: MergedDay[] }) {
-  const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
+  const [tooltip, setTooltip] = useState<{ day: MergedDay; x: number; y: number } | null>(null)
 
   const weeks = useMemo(() => {
     if (days.length === 0) return [] as MergedDay[][]
@@ -66,7 +68,7 @@ function Heatmap({ days }: { days: MergedDay[] }) {
       const week: MergedDay[] = []
       for (let i = 0; i < 7; i += 1) {
         const key = cursor.toISOString().slice(0, 10)
-        week.push(byDate.get(key) ?? { date: key, contributionCount: 0, level: 0 })
+        week.push(byDate.get(key) ?? emptyDay(key))
         cursor.setUTCDate(cursor.getUTCDate() + 1)
       }
       columns.push(week)
@@ -93,9 +95,9 @@ function Heatmap({ days }: { days: MergedDay[] }) {
   }
 
   return (
-    <div className="relative overflow-x-auto pb-2">
-      <div className="inline-flex gap-3">
-        <div className="mt-6 flex flex-col justify-between py-[2px] text-[10px] text-emerald-200/40">
+    <div className="relative w-full pb-2">
+      <div className="flex w-full gap-3">
+        <div className="mt-6 flex shrink-0 flex-col justify-between py-[2px] text-[10px] text-emerald-200/40">
           <span>Sun</span>
           <span>Mon</span>
           <span>Tue</span>
@@ -104,37 +106,29 @@ function Heatmap({ days }: { days: MergedDay[] }) {
           <span>Fri</span>
           <span>Sat</span>
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="mb-1 flex gap-[3px] text-[10px] text-emerald-300/60">
             {weeks.map((week, index) => (
-              <div key={week[0].date} className="w-[11px] overflow-visible">
-                {monthLabels[index] ? <span className="inline-block w-8">{monthLabels[index]}</span> : null}
+              <div key={week[0].date} className="min-w-0 flex-1 overflow-visible">
+                {monthLabels[index] ? <span className="inline-block whitespace-nowrap">{monthLabels[index]}</span> : null}
               </div>
             ))}
           </div>
           <div className="flex gap-[3px]">
             {weeks.map((week) => (
-              <div key={week[0].date} className="flex flex-col gap-[3px]">
+              <div key={week[0].date} className="flex min-w-0 flex-1 flex-col gap-[3px]">
                 {week.map((day) => (
                   <button
                     key={day.date}
                     type="button"
-                    aria-label={formatTooltip(day)}
-                    className="h-[11px] w-[11px] rounded-[2px] border border-emerald-500/10 transition hover:ring-1 hover:ring-lime-300"
+                    aria-label={formatAriaLabel(day)}
+                    className="aspect-square w-full rounded-[2px] border border-emerald-500/10 transition hover:ring-1 hover:ring-lime-300"
                     style={{ backgroundColor: LEVEL_COLORS[day.level] ?? LEVEL_COLORS[0] }}
                     onMouseEnter={(event) => {
-                      setTooltip({
-                        text: formatTooltip(day),
-                        x: event.clientX,
-                        y: event.clientY,
-                      })
+                      setTooltip({ day, x: event.clientX, y: event.clientY })
                     }}
                     onMouseMove={(event) => {
-                      setTooltip({
-                        text: formatTooltip(day),
-                        x: event.clientX,
-                        y: event.clientY,
-                      })
+                      setTooltip({ day, x: event.clientX, y: event.clientY })
                     }}
                     onMouseLeave={() => setTooltip(null)}
                   />
@@ -146,10 +140,30 @@ function Heatmap({ days }: { days: MergedDay[] }) {
       </div>
       {tooltip ? (
         <div
-          className="pointer-events-none fixed z-20 rounded border border-lime-400/40 bg-[#07140c] px-2 py-1 text-xs text-lime-200 shadow-[0_0_18px_#39ff1440]"
-          style={{ left: tooltip.x + 12, top: tooltip.y - 28 }}
+          className="pointer-events-none fixed z-20 min-w-[12rem] rounded-lg border border-lime-400/40 bg-[#07140c] px-3 py-2 text-xs text-lime-200 shadow-[0_0_18px_#39ff1440]"
+          style={{
+            left: Math.min(tooltip.x + 14, window.innerWidth - 220),
+            top: Math.max(12, tooltip.y - 12),
+            transform: 'translateY(-100%)',
+          }}
         >
-          {tooltip.text}
+          <p className="text-[10px] tracking-wide text-emerald-200/60 uppercase">
+            {formatDayLabel(tooltip.day.date)}
+          </p>
+          <p className="mt-1 font-medium text-lime-100">
+            {tooltip.day.contributionCount} contribution
+            {tooltip.day.contributionCount === 1 ? '' : 's'}
+          </p>
+          {tooltip.day.byAccount.length > 0 ? (
+            <ul className="mt-2 space-y-1 border-t border-lime-400/20 pt-2">
+              {tooltip.day.byAccount.map((account) => (
+                <li key={account.login} className="flex items-center justify-between gap-4">
+                  <span className="text-emerald-200/80">@{account.login}</span>
+                  <span className="font-mono text-lime-300">{account.contributionCount}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -164,7 +178,7 @@ export default function App() {
   const [formError, setFormError] = useState<string | null>(null)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tokens))
+    localStorage.setItem(STORAGE_KEY, serializeStoredTokens(tokens))
   }, [tokens])
 
   useEffect(() => {
@@ -221,30 +235,16 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-6 py-10">
+    <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-6 py-10">
       <header className="border-b border-lime-500/20 pb-6">
         <h1 className="text-3xl font-semibold text-lime-100">Unified GitHub Contribution Graph</h1>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-          <p className="max-w-xl text-xs text-emerald-200/70">
-            Combine contribution graphs from multiple GitHub accounts into one heatmap.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <div className="rounded-xl border border-lime-400/30 bg-lime-400/5 px-5 py-3 text-right shadow-[0_0_24px_#39ff141a]">
-              <p className="text-[10px] tracking-[0.25em] text-lime-400/70 uppercase">Total contributions</p>
-              <p className="font-mono text-3xl text-lime-300">{totalContributions.toLocaleString()}</p>
-            </div>
-            <div className="rounded-xl border border-lime-400/30 bg-lime-400/5 px-5 py-3 text-right shadow-[0_0_24px_#39ff141a]">
-              <p className="inline-flex items-center justify-end gap-1 text-[10px] tracking-[0.25em] text-lime-400/70 uppercase">
-                <CalendarDays size={12} />
-                Total contribution days
-              </p>
-              <p className="font-mono text-3xl text-lime-300">{totalContributionDays.toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
+        <p className="mt-2 text-xs text-emerald-200/70">
+          Combine contribution graphs from multiple GitHub accounts into one heatmap.
+        </p>
       </header>
 
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+      <section className="flex flex-col gap-6">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
         <form
           onSubmit={addToken}
           className="rounded-2xl border border-emerald-500/20 bg-[#07110c]/80 p-5 shadow-[inset_0_0_40px_#0b3d1e22]"
@@ -323,6 +323,21 @@ export default function App() {
             )}
           </ul>
         </form>
+
+        <div className="flex min-w-[16rem] flex-col gap-3">
+          <div className="rounded-xl border border-lime-400/30 bg-lime-400/5 px-5 py-3 text-right shadow-[0_0_24px_#39ff141a]">
+            <p className="text-[10px] tracking-[0.25em] text-lime-400/70 uppercase">Total contributions</p>
+            <p className="font-mono text-3xl text-lime-300">{totalContributions.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border border-lime-400/30 bg-lime-400/5 px-5 py-3 text-right shadow-[0_0_24px_#39ff141a]">
+            <p className="inline-flex items-center justify-end gap-1 text-[10px] tracking-[0.25em] text-lime-400/70 uppercase">
+              <CalendarDays size={12} />
+              Total contribution days
+            </p>
+            <p className="font-mono text-3xl text-lime-300">{totalContributionDays.toLocaleString()}</p>
+          </div>
+        </div>
+        </div>
 
         <section className="rounded-2xl border border-emerald-500/20 bg-[#07110c]/80 p-5">
           <div className="mb-4 flex items-center justify-between gap-3">

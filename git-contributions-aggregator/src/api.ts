@@ -32,10 +32,16 @@ export type ContributionDataset = {
   days: ContributionDay[]
 }
 
+export type AccountDayCount = {
+  login: string
+  contributionCount: number
+}
+
 export type MergedDay = {
   date: string
   contributionCount: number
   level: number
+  byAccount: AccountDayCount[]
 }
 
 export type TokenFetchSuccess = {
@@ -88,23 +94,46 @@ export function contributionLevel(count: number, max: number): number {
 }
 
 export function mergeContributions(datasets: ContributionDataset[]): MergedDay[] {
-  const byDate = new Map<string, number>()
+  const logins: string[] = []
+  const loginIndex = new Map<string, number>()
 
   for (const dataset of datasets) {
-    for (const day of dataset.days) {
-      byDate.set(day.date, (byDate.get(day.date) ?? 0) + day.contributionCount)
+    if (!loginIndex.has(dataset.login)) {
+      loginIndex.set(dataset.login, logins.length)
+      logins.push(dataset.login)
     }
   }
 
-  const max = Math.max(0, ...byDate.values())
+  const byDate = new Map<string, number[]>()
+
+  for (const dataset of datasets) {
+    const index = loginIndex.get(dataset.login)
+    if (index === undefined) continue
+
+    for (const day of dataset.days) {
+      const counts = byDate.get(day.date) ?? Array(logins.length).fill(0)
+      counts[index] += day.contributionCount
+      byDate.set(day.date, counts)
+    }
+  }
+
+  const totals = [...byDate.values()].map((counts) => counts.reduce((sum, count) => sum + count, 0))
+  const max = Math.max(0, ...totals)
 
   return [...byDate.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, contributionCount]) => ({
-      date,
-      contributionCount,
-      level: contributionLevel(contributionCount, max),
-    }))
+    .map(([date, counts]) => {
+      const contributionCount = counts.reduce((sum, count) => sum + count, 0)
+      return {
+        date,
+        contributionCount,
+        level: contributionLevel(contributionCount, max),
+        byAccount: logins.map((login, index) => ({
+          login,
+          contributionCount: counts[index] ?? 0,
+        })),
+      }
+    })
 }
 
 function flattenCalendar(payload: GraphQLResponse): ContributionDataset {
