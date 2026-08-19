@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { FileUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,35 +10,54 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { MAX_RESUMES } from "@/lib/config";
 
 type ResumeUploaderProps = {
   jobDescription: string;
-  files: FileList | null;
+  files: File[];
   isLoading: boolean;
+  maxResumes?: number;
   onJobDescriptionChange: (value: string) => void;
-  onFilesChange: (files: FileList | null) => void;
+  onFilesChange: (files: File[]) => void;
   onAnalyze: () => void;
 };
+
+function isPdf(file: File): boolean {
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+}
 
 export function ResumeUploader({
   jobDescription,
   files,
   isLoading,
+  maxResumes = MAX_RESUMES,
   onJobDescriptionChange,
   onFilesChange,
   onAnalyze,
 }: ResumeUploaderProps) {
-  const fileCount = files?.length ?? 0;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [limitNote, setLimitNote] = useState<string | null>(null);
+  const fileNames = files.map((file) => file.name);
+
+  function handleFilePick(event: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(event.target.files ?? []).filter(isPdf);
+    if (picked.length > maxResumes) {
+      setLimitNote(`Only the first ${maxResumes} PDFs were kept.`);
+    } else {
+      setLimitNote(null);
+    }
+    onFilesChange(picked.slice(0, maxResumes));
+    event.target.value = "";
+  }
 
   return (
-    <Card>
+    <Card className="shadow-sm transition-shadow hover:shadow-md">
       <CardHeader>
-        <CardTitle>Input</CardTitle>
+        <CardTitle>Screening inputs</CardTitle>
         <CardDescription>
-          Paste a job description and upload one or more PDF resumes.
+          Paste a job description and upload PDF resumes.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -48,40 +68,61 @@ export function ResumeUploader({
             value={jobDescription}
             onChange={(event) => onJobDescriptionChange(event.target.value)}
             placeholder="Describe the role, required skills, and experience..."
-            className="min-h-40"
+            className="h-48 resize-none overflow-y-auto break-words"
             disabled={isLoading}
           />
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="resumes">Upload Resumes</Label>
-          <Input
+          <input
+            ref={fileInputRef}
             id="resumes"
             type="file"
             accept="application/pdf,.pdf"
             multiple
             disabled={isLoading}
-            onChange={(event) => onFilesChange(event.target.files)}
+            className="sr-only"
+            onChange={handleFilePick}
           />
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            className="w-full cursor-pointer"
+            disabled={isLoading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <FileUp />
+            Choose Files
+          </Button>
           <p className="text-muted-foreground text-sm">
-            {fileCount === 0
-              ? "PDF files only. Multiple files are supported."
-              : `${fileCount} PDF${fileCount === 1 ? "" : "s"} selected.`}
+            PDF only. Up to {maxResumes} resumes
+            {fileNames.length > 0 ? ` · ${fileNames.length} selected` : ""}.
+            {limitNote ? ` ${limitNote}` : ""}
           </p>
+          {fileNames.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5">
+              {fileNames.map((name) => (
+                <li
+                  key={name}
+                  className="bg-secondary text-secondary-foreground max-w-full rounded-full px-2.5 py-0.5 text-xs break-all"
+                >
+                  {name}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
 
         <Button
           type="button"
           size="lg"
-          className="w-full sm:w-auto"
-          disabled={isLoading || !jobDescription.trim() || fileCount === 0}
+          className="w-full cursor-pointer"
+          disabled={isLoading || !jobDescription.trim() || fileNames.length === 0}
           onClick={onAnalyze}
         >
-          {isLoading ? (
-            <Loader2 className="animate-spin" />
-          ) : (
-            <FileUp />
-          )}
+          {isLoading ? <Loader2 className="animate-spin" /> : <FileUp />}
           Analyze Resumes
         </Button>
       </CardContent>

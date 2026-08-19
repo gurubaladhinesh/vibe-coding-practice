@@ -59,6 +59,18 @@ async function main() {
     throw new Error("Score was not a number.");
   }
 
+  if (!Array.isArray(candidate.matchingSkills)) {
+    throw new Error("matchingSkills was not an array.");
+  }
+
+  if (!Array.isArray(candidate.missingSkills)) {
+    throw new Error("missingSkills was not an array.");
+  }
+
+  if (typeof candidate.comments !== "string") {
+    throw new Error("comments was not a string.");
+  }
+
   console.log("Analyze flow verification passed.");
 }
 

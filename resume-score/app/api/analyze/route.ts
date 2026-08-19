@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
+import { MAX_RESUMES } from "@/lib/config";
 import { extractPdfText } from "@/lib/pdf";
 import { hasOllamaKey, scoreResumeWithOllama } from "@/lib/score-resume";
-import type { AnalyzeResponse, Candidate } from "@/lib/types";
+import {
+  failedCandidate,
+  type AnalyzeResponse,
+  type Candidate,
+} from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
@@ -35,14 +40,7 @@ async function analyzeFile(
   } catch (error) {
     const message = errorMessage(error);
     return {
-      candidate: {
-        name: fileName.replace(/\.pdf$/i, ""),
-        email: "Not found",
-        mobile: "Not found",
-        score: 0,
-        fileName,
-        parseError: message,
-      },
+      candidate: failedCandidate(fileName, message),
       warning: `Could not process ${fileName}: ${message}`,
     };
   }
@@ -66,6 +64,13 @@ export async function POST(request: Request) {
     if (files.length === 0) {
       return NextResponse.json(
         { error: "Upload at least one PDF resume." },
+        { status: 400 },
+      );
+    }
+
+    if (files.length > MAX_RESUMES) {
+      return NextResponse.json(
+        { error: `Upload at most ${MAX_RESUMES} PDF resumes.` },
         { status: 400 },
       );
     }

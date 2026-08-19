@@ -2,7 +2,7 @@ import { Ollama } from "ollama";
 import type { Candidate } from "@/lib/types";
 
 const SYSTEM_PROMPT =
-  "You are an expert HR recruiter. Extract the candidate's Name, Email, and Mobile. Then, compare the resume text against the provided Job Description. Assign a match score (0-100) based on skills and experience relevance.";
+  "You are an expert HR recruiter. Extract the candidate's Name, Email, and Mobile. Compare the resume against the Job Description. Assign a match score (0-100). List matching skills the candidate has that the job needs, missing skills the job needs that the resume does not show, and a short comment.";
 
 const DEFAULT_MODEL = "gpt-oss:120b";
 const FALLBACK_MODELS = ["gemma4:31b", "nemotron-3-nano:30b"];
@@ -13,6 +13,16 @@ function clampScore(value: unknown): number {
     return 0;
   }
   return Math.max(0, Math.min(100, Math.round(numeric)));
+}
+
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => String(item).trim())
+    .filter((item) => item.length > 0);
 }
 
 function extractJsonObject(raw: string): string {
@@ -33,6 +43,8 @@ function extractJsonObject(raw: string): string {
 
 function parseCandidateJson(raw: string, fileName: string): Candidate {
   const parsed = JSON.parse(extractJsonObject(raw)) as Partial<Candidate>;
+  const matchingSkills = toStringList(parsed.matchingSkills);
+  const missingSkills = toStringList(parsed.missingSkills);
 
   return {
     name: String(parsed.name ?? "Unknown").trim() || "Unknown",
@@ -40,16 +52,46 @@ function parseCandidateJson(raw: string, fileName: string): Candidate {
     mobile: String(parsed.mobile ?? "").trim() || "Not found",
     score: clampScore(parsed.score),
     fileName,
+    matchingSkills,
+    missingSkills,
+    comments:
+      String(parsed.comments ?? "").trim() ||
+      defaultComments(matchingSkills, missingSkills),
   };
 }
 
-function keywordScore(jobDescription: string, resumeText: string): number {
-  const tokens = jobDescription
-    .toLowerCase()
-    .split(/[^a-z0-9+#]+/)
-    .filter((token) => token.length > 3);
+function defaultComments(
+  matchingSkills: string[],
+  missingSkills: string[],
+): string {
+  if (matchingSkills.length === 0 && missingSkills.length === 0) {
+    return "Not enough detail to compare skills against the job description.";
+  }
 
-  const unique = [...new Set(tokens)];
+  const matched =
+    matchingSkills.length > 0
+      ? `Matches: ${matchingSkills.slice(0, 6).join(", ")}.`
+      : "No clear skill matches.";
+  const missing =
+    missingSkills.length > 0
+      ? ` Gaps: ${missingSkills.slice(0, 6).join(", ")}.`
+      : "";
+  return `${matched}${missing}`;
+}
+
+function jobTokens(jobDescription: string): string[] {
+  return [
+    ...new Set(
+      jobDescription
+        .toLowerCase()
+        .split(/[^a-z0-9+#]+/)
+        .filter((token) => token.length > 3),
+    ),
+  ];
+}
+
+function keywordScore(jobDescription: string, resumeText: string): number {
+  const unique = jobTokens(jobDescription);
   if (unique.length === 0) {
     return 50;
   }
@@ -68,6 +110,11 @@ export function mockScoreResume(
   resumeText: string,
   fileName: string,
 ): Candidate {
+  const unique = jobTokens(jobDescription);
+  const haystack = resumeText.toLowerCase();
+  const matchingSkills = unique.filter((token) => haystack.includes(token));
+  const missingSkills = unique.filter((token) => !haystack.includes(token));
+
   return {
     name: extractField(
       resumeText,
@@ -86,6 +133,9 @@ export function mockScoreResume(
     ),
     score: keywordScore(jobDescription, resumeText),
     fileName,
+    matchingSkills,
+    missingSkills,
+    comments: defaultComments(matchingSkills, missingSkills),
   };
 }
 
@@ -118,8 +168,10 @@ export async function scoreResumeWithOllama(
 
   const ollama = createOllamaClient(apiKey);
   const userPrompt = [
-    "Return JSON with keys: name, email, mobile, score.",
+    "Return JSON with keys: name, email, mobile, score, matchingSkills, missingSkills, comments.",
     "score must be an integer from 0 to 100.",
+    "matchingSkills and missingSkills must be arrays of short skill names.",
+    "comments must be 1-2 sentences on fit.",
     "If a contact field is missing, use an empty string.",
     "",
     "Job Description:",

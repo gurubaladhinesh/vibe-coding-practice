@@ -13,16 +13,16 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Resume Screener",
+  title: "SkillMatch",
   description:
-    "Parse PDF resumes, score them against a job description, and filter candidates by match.",
+    "See who actually fits the role. Score PDF resumes against a job description and filter matches in real time.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="bg-background text-foreground min-h-full flex flex-col">
         {children}
