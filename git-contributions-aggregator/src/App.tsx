@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Activity, CalendarDays, KeyRound, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { Activity, CalendarDays, FolderGit2, KeyRound, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import logo from './assets/logo.svg'
 import {
   fetchAllContributions,
   maskToken,
@@ -237,10 +238,21 @@ export default function App() {
   return (
     <div className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-6 py-10">
       <header className="border-b border-lime-500/20 pb-6">
-        <h1 className="text-3xl font-semibold text-lime-100">Unified GitHub Contribution Graph</h1>
-        <p className="mt-2 text-xs text-emerald-200/70">
-          Combine contribution graphs from multiple GitHub accounts into one heatmap.
-        </p>
+        <div className="flex items-center gap-3">
+          <img
+            src={logo}
+            alt=""
+            width={40}
+            height={40}
+            className="h-10 w-10 rounded-xl border border-lime-400/25 shadow-[0_0_18px_#39ff1428]"
+          />
+          <div>
+            <h1 className="text-3xl font-semibold text-lime-100">Unified GitHub Contribution Graph</h1>
+            <p className="mt-2 text-xs text-emerald-200/70">
+              Combine contribution graphs from multiple GitHub accounts into one heatmap.
+            </p>
+          </div>
+        </div>
       </header>
 
       <section className="flex flex-col gap-6">
@@ -370,6 +382,21 @@ export default function App() {
           </div>
         </section>
       </section>
+
+      <footer className="mt-auto border-t border-lime-500/20 pt-4 text-xs text-emerald-200/50">
+        <p className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          This application was vibe coded.
+          <a
+            href="https://github.com/gurubaladhinesh/vibe-coding-practice/tree/main/git-contributions-aggregator"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-lime-300/80 underline decoration-lime-400/30 underline-offset-2 hover:text-lime-200"
+          >
+            <FolderGit2 size={12} />
+            Source on GitHub
+          </a>
+        </p>
+      </footer>
     </div>
   )
 }
